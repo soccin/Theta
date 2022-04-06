@@ -1,0 +1,3 @@
+[submodule "code/facets"]
+	path = code/facets
+	url = git@github.com:mskcc/facets.git
