@@ -1,0 +1,65 @@
+#!/bin/bash
+
+if [ "$#" != "1" ]; then
+    echo
+    echo usage: CMD.Tranch TRANCH_NUMBER
+    echo
+    exit
+fi
+
+TRANCH=$1
+
+ln -s /juno/res/mix/Cache/2021-10-14/Tranch${TRANCH} raw_bams
+
+. ../SETUP_R_LIBS.sh
+
+ln -s ../code/ .
+. code/SETUP_LIBPATH
+
+mkdir -p MD5
+for file in $(find raw_bams/ -name '*.md5'); do
+    echo $(cat $file)" ${file/.md5/}" >MD5/$(basename $file);
+done
+
+LTAG=MD5_$$
+ls MD5/* | xargs -n 1 bsub -o LSF/ -J $LTAG -n 3 -W 59 md5sum -c
+bSync $LTAG
+
+echo "Done with MD5"
+
+cat LSF/* | fgrep .bam | fgrep raw | fgrep OK | sed 's/:.*//' >BAM_MANIFEST
+
+Rscript --no-save ../pairBAMs.R BAM_MANIFEST
+
+CTAG=COUNT_$$
+
+cat pairs \
+    | xargs -n 2 bsub -o LSF.COUNT/ -J $CTAG -n 3 -W 359 \
+        ../getCountsPairs.sh ../human_hg19_b137_facets.vcf.gz
+
+# cat pairs \
+#     | xargs -n 2 bsub -o LSF.COUNT/ -J CTAG_$$ -n 3 -W 359 \
+#         ../getCountsPairsPy.sh ../pileup/human_hg19_b137_facets.vcf.gz
+
+bSync $CTAG
+echo "Done with Counting"
+
+echo "CHECK MD5 Sigs of count files"
+CHECK="START"
+TIME=2
+while [ "$CHECK" != "" ]; do
+    CHECK=$(find Counts -name "counts_*.txt.gz.md5" | parallel md5sum -c | fgrep -v ": OK")
+    echo "CHECK >>" $CHECK
+    if [ "$CHECK" != "" ]; then
+        TIME=$(( TIME * 1618 / 1000 ))
+        echo "Sleep for $TIME"
+        sleep $TIME
+    fi
+done
+echo Done
+
+FTAG=FACETS_$$
+
+find Counts -name "counts_*.txt.gz" | xargs -n 1 bsub -o LSF.FACETS/ -J $FTAG -W 59 -n 5 -R "rusage[mem=5]" Rscript --no-save ../doFacets01.R
+
+bSync $FTAG
