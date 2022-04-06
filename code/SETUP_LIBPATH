@@ -1,0 +1,1 @@
+export LD_LIBRARY_PATH=/opt/common/CentOS_7-dev/htslib/htslib-1.9:$LD_LIBRARY_PATH 
